@@ -5,8 +5,31 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <sys/types.h>
-// #include <sys/wait.h>
+#include <sys/wait.h>
 #include "kgbash.h"
+
+static bool active_jobs = false;
+
+bool is_exit_string(char* cmd) {
+    if(cmd && !strncmp(cmd, EXIT_STRING, sizeof(EXIT_STRING)-1)) {
+        return true;
+    }
+    return false;
+}
+
+// TODO: write this
+bool run_internal_cmds(char* cmd) {
+    if(!cmd) {
+        return false;
+    }
+    if(strncmp(cmd, PWD_STRING, sizeof(PWD_STRING))) {
+        return true;
+    }
+    if(strncmp(cmd, CD_STRING, sizeof(CD_STRING))) {
+        return true;
+    }
+    return false;
+}
 
 // TODO: write this
 bool is_special_token(char token) {
@@ -118,12 +141,30 @@ int main() {
         }
 
         // TODO: separate out the input into distinct command arguments
-        if(!separate_commands((char**)cmd, raw_input, COMMAND_ARRAY_LEN, INPUT_ARRAY_LEN)) {
-            fprintf(stdout, "\nInvalid input: %s\n", raw_input);
+        if(!separate_commands((char**)cmd, raw_input, COMMAND_ARRAY_LEN,
+                              INPUT_ARRAY_LEN)) {
+            fprintf(stderr, "\nInvalid input: %s\n", raw_input);
             continue;
         }
 
-        // Display the user's command
+        // Check for exit condition
+        if(is_exit_string(cmd[0])){
+            if(!active_jobs) {
+                fprintf(stderr, "\nBye...\n");
+                return EXIT_SUCCESS;
+            } else {
+                fprintf(stderr, "\nError: active jobs still running\n");
+                continue;
+            }
+        }
+
+        // If we run an internal command, execute and continue
+        // TODO: eventually make this sleepable...
+        if(run_internal_cmds(cmd[0])) {
+            continue;
+        }
+
+        // DEBUG: Display the user's command
         fprintf(stdout, "%s\n", cmd[0]);
 
         pid = fork();
@@ -133,6 +174,7 @@ int main() {
         }
         else if (pid > 0) {
             wait(&retval);
+            // TODO: retrieve this retval correctly
             retval = EXIT_SUCCESS;
         }
         else {
@@ -141,7 +183,7 @@ int main() {
 
         fprintf(stderr, "+ completed '%s %s' [%d]\n", cmd[0], cmd[1], retval);
 
-    } while(strncmp(raw_input, QUIT_STRING, sizeof(QUIT_STRING)-1));
+    } while(1);
 
     return EXIT_SUCCESS;
 }
