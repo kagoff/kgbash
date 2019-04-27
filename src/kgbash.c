@@ -7,141 +7,14 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include "definitions.h"
+#include "types.h"
+#include "input.h"
+#include "cmds.h"
+
 #include "kgbash.h"
-#include "cmd.h"
 
 static bool active_jobs = false;
-
-bool is_exit_string(char* cmd) {
-    if(cmd && !strncmp(cmd, EXIT_STRING, sizeof(EXIT_STRING)-1)) {
-        return true;
-    }
-    return false;
-}
-
-// TODO: write this
-bool run_internal_cmds(char* cmd) {
-    if(!cmd) {
-        return false;
-    }
-    if(!strncmp(cmd, PWD_STRING, sizeof(PWD_STRING))) {
-        return true;
-    }
-    if(!strncmp(cmd, CD_STRING, sizeof(CD_STRING))) {
-        return true;
-    }
-    return false;
-}
-
-// TODO: write this
-bool is_special_token(char token) {
-    return false;
-}
-
-bool is_white_space_or_null(char token) {
-    if(token == ' ' || token == '\t' || token == '\0') {
-        return true;
-    }
-    return false;
-}
-
-/*
- * Assumes
- */
-bool separate_commands (cmd_s *cmd, char* string, size_t n_args, size_t string_size) {
-
-    // Sanity check
-    if(!cmd || !string) {
-        return false;
-    }
-
-    uint32_t string_idx = 0;
-    uint32_t arg_idx = 0;
-    uint32_t cmd_string_idx = 0;
-
-    // Get the name of the command to run
-    while(!is_white_space_or_null(string[string_idx])
-        && string_idx < string_size && cmd_string_idx < string_size) {
-            (cmd->command)[cmd_string_idx++] = string[string_idx++];
-    }
-    // TODO: check boundaries here
-    (cmd->command)[cmd_string_idx] = '\0';
-    (cmd->args)[arg_idx] = (char*)&(cmd->command);
-
-    // If reached null terminator, stop
-    if(string[string_idx] == '\0') {
-        if(arg_idx < (n_args-1)) {
-            (cmd->args)[arg_idx+1] = NULL;
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    // Gather args
-    while(arg_idx < n_args) {
-        cmd_string_idx = 0;
-        arg_idx++; //increment first since we already set first arg to the cmd
-
-        // Skip over white space 
-        while(is_white_space_or_null(string[string_idx])) {
-            string_idx++;
-        }
-
-        // TODO: free this!!
-        (cmd->args)[arg_idx] = malloc(string_size*sizeof(char));
-
-        // For each command index, parse the string until a special token
-        while(!is_white_space_or_null(string[string_idx]) &&
-              string_idx < string_size && cmd_string_idx < string_size) {
-            (cmd->args)[arg_idx][cmd_string_idx++] = string[string_idx++];
-        }
-
-        // If reached null terminator, stop
-        if(string[string_idx] == '\0') {
-            if(arg_idx < (n_args-1)) {
-                (cmd->args)[arg_idx+1] = NULL;
-                return true;
-            } else {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-/*
- * Fills a string to contain only the null-terminated user input without
- * a trailing endline character.
- * 
- * Returns:
- *  - False if input is empty
- *  - True otherwise
- */
- bool parse_raw_input(char * string, size_t string_size) {
-    uint32_t string_idx = 0;
-
-    // Collect user input
-    do {
-        string[string_idx] = getchar();
-    } while(string[string_idx++] != '\n' &&
-            string_idx < string_size);
-
-    // Return false on empty user input
-    if(string[0] == '\n') {
-        return false;
-    }
-
-    // Clear input buffer if needed
-    if(string[string_idx-1] != '\n') {
-        while(getchar() != '\n');
-        string[string_idx] = '\0';
-    } else {
-        string[string_idx-1] = '\0';
-    }
-
-    return true;
-}
 
 int main() {
 
@@ -159,20 +32,20 @@ int main() {
         fprintf(stdout, "kgbash: ");
 
         // Gather user input data, and skip fork if empty
-        if(!parse_raw_input(raw_input, INPUT_ARRAY_LEN)) {
+        if(!input_parse_raw_input(raw_input, INPUT_ARRAY_LEN)) {
             fprintf(stdout, "\n");
             continue;
         }
 
         // TODO: separate out the input into distinct command arguments
-        if(!separate_commands(cmd, raw_input, ARG_ARRAY_LEN,
+        if(!input_separate_commands(cmd, raw_input, ARG_ARRAY_LEN,
                               INPUT_ARRAY_LEN)) {
             fprintf(stderr, "Invalid input: %s\n", raw_input);
             continue;
         }
 
         // Check for exit condition
-        if(is_exit_string((char*)(cmd->command))) {
+        if(input_is_exit_string((char*)(cmd->command))) {
             if(!active_jobs) {
                 fprintf(stderr, "Bye...\n");
                 return EXIT_SUCCESS;
@@ -184,7 +57,7 @@ int main() {
 
         // If we run an internal command, execute and continue
         // TODO: eventually make this sleepable...
-        if(run_internal_cmds((char*)(cmd->command))) {
+        if(cmds_run_internal((const char*)(cmd->command))) {
             continue;
         }
 
