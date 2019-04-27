@@ -6,7 +6,9 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+
 #include "kgbash.h"
+#include "cmd.h"
 
 static bool active_jobs = false;
 
@@ -22,10 +24,10 @@ bool run_internal_cmds(char* cmd) {
     if(!cmd) {
         return false;
     }
-    if(strncmp(cmd, PWD_STRING, sizeof(PWD_STRING))) {
+    if(!strncmp(cmd, PWD_STRING, sizeof(PWD_STRING))) {
         return true;
     }
-    if(strncmp(cmd, CD_STRING, sizeof(CD_STRING))) {
+    if(!strncmp(cmd, CD_STRING, sizeof(CD_STRING))) {
         return true;
     }
     return false;
@@ -44,9 +46,9 @@ bool is_white_space_or_null(char token) {
 }
 
 /*
- * Assumes cmd input defined as cmd[n_commands][string_size]
+ * Assumes
  */
-bool separate_commands (char** cmd, char* string, size_t n_commands, size_t string_size) {
+bool separate_commands (cmd_s *cmd, char* string, size_t n_args, size_t string_size) {
 
     // Sanity check
     if(!cmd || !string) {
@@ -54,34 +56,56 @@ bool separate_commands (char** cmd, char* string, size_t n_commands, size_t stri
     }
 
     uint32_t string_idx = 0;
-    uint32_t cmd_idx = 0;
+    uint32_t arg_idx = 0;
     uint32_t cmd_string_idx = 0;
 
-    // Gather commands
-    while(cmd_idx < n_commands) {
+    // Get the name of the command to run
+    while(!is_white_space_or_null(string[string_idx])
+        && string_idx < string_size && cmd_string_idx < string_size) {
+            (cmd->command)[cmd_string_idx++] = string[string_idx++];
+    }
+    // TODO: check boundaries here
+    (cmd->command)[cmd_string_idx] = '\0';
+    (cmd->args)[arg_idx] = (char*)&(cmd->command);
+
+    // If reached null terminator, stop
+    if(string[string_idx] == '\0') {
+        if(arg_idx < (n_args-1)) {
+            (cmd->args)[arg_idx+1] = NULL;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    // Gather args
+    while(arg_idx < n_args) {
+        cmd_string_idx = 0;
+        arg_idx++; //increment first since we already set first arg to the cmd
+
+        // Skip over white space 
+        while(is_white_space_or_null(string[string_idx])) {
+            string_idx++;
+        }
+
         // TODO: free this!!
-        cmd[cmd_idx] = malloc(string_size*sizeof(char));
+        (cmd->args)[arg_idx] = malloc(string_size*sizeof(char));
 
         // For each command index, parse the string until a special token
         while(!is_white_space_or_null(string[string_idx]) &&
               string_idx < string_size && cmd_string_idx < string_size) {
-            cmd[cmd_idx][cmd_string_idx++] = string[string_idx++];
+            (cmd->args)[arg_idx][cmd_string_idx++] = string[string_idx++];
         }
 
         // If reached null terminator, stop
         if(string[string_idx] == '\0') {
-            if(cmd_idx < (n_commands-1)) {
-                cmd[cmd_idx+1] = NULL;
+            if(arg_idx < (n_args-1)) {
+                (cmd->args)[arg_idx+1] = NULL;
                 return true;
             } else {
                 return false;
             }
         }
-
-        // Skip over white space and keep gathering commands
-        string_idx++;
-        cmd_idx++;
-        cmd_string_idx = 0;
     }
     return true;
 }
@@ -122,14 +146,14 @@ bool separate_commands (char** cmd, char* string, size_t n_commands, size_t stri
 int main() {
 
     char raw_input[INPUT_ARRAY_LEN];
-    char *cmd[COMMAND_ARRAY_LEN];
+    cmd_s *cmd = malloc(sizeof(cmd_s));
     int retval;
     pid_t pid;
 
     do {
         // Reset user input
         memset(raw_input, 0, INPUT_ARRAY_LEN*sizeof(char));
-        memset(cmd, 0, COMMAND_ARRAY_LEN*sizeof(char*));
+        memset(cmd, 0, sizeof(cmd_s));
 
         // Prompt user for input
         fprintf(stdout, "kgbash: ");
@@ -141,35 +165,35 @@ int main() {
         }
 
         // TODO: separate out the input into distinct command arguments
-        if(!separate_commands((char**)cmd, raw_input, COMMAND_ARRAY_LEN,
+        if(!separate_commands(cmd, raw_input, ARG_ARRAY_LEN,
                               INPUT_ARRAY_LEN)) {
-            fprintf(stderr, "\nInvalid input: %s\n", raw_input);
+            fprintf(stderr, "Invalid input: %s\n", raw_input);
             continue;
         }
 
         // Check for exit condition
-        if(is_exit_string(cmd[0])){
+        if(is_exit_string((char*)(cmd->command))) {
             if(!active_jobs) {
-                fprintf(stderr, "\nBye...\n");
+                fprintf(stderr, "Bye...\n");
                 return EXIT_SUCCESS;
             } else {
-                fprintf(stderr, "\nError: active jobs still running\n");
+                fprintf(stderr, "Error: active jobs still running\n");
                 continue;
             }
         }
 
         // If we run an internal command, execute and continue
         // TODO: eventually make this sleepable...
-        if(run_internal_cmds(cmd[0])) {
+        if(run_internal_cmds((char*)(cmd->command))) {
             continue;
         }
 
         // DEBUG: Display the user's command
-        fprintf(stdout, "%s\n", cmd[0]);
+        fprintf(stdout, "%s\n", cmd->command);
 
         pid = fork();
         if (pid == 0) {
-            execvp(cmd[0], (char**)cmd);
+            execvp(cmd->command, cmd->args);
             exit(EXIT_FAILURE);
         }
         else if (pid > 0) {
@@ -181,7 +205,7 @@ int main() {
             exit(EXIT_FAILURE);
         }
 
-        fprintf(stderr, "+ completed '%s %s' [%d]\n", cmd[0], cmd[1], retval);
+        fprintf(stderr, "+ completed '%s %s' [%d]\n", cmd->command, (cmd->args)[1], retval);
 
     } while(1);
 
