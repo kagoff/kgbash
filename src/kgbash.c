@@ -38,10 +38,10 @@ int main() {
         }
 
         // TODO: separate out the input into distinct command arguments
-        job = malloc(sizeof(job_s));
+        job = job_create();
         if(!job_fill_from_input(job, input)) {
             fprintf(stderr, "Invalid input: %s\n", input);
-            job_free(&job);
+            job_free(job);
             continue;
         }
 
@@ -49,11 +49,11 @@ int main() {
         if(job_is_exit_string(job)) {
             if(!active_jobs) {
                 fprintf(stderr, "Bye...\n");
-                job_free(&job);
+                job_free(job);
                 return EXIT_SUCCESS;
             } else {
                 fprintf(stderr, "Error: active jobs still running\n");
-                job_free(&job);
+                job_free(job);
                 continue;
             }
         }
@@ -61,7 +61,9 @@ int main() {
         // If we run an internal command, execute and continue
         // TODO: eventually make this sleepable...
         if(job_run_internal(job)) {
-            job_free(&job);
+            fprintf(stderr, "+ completed '%s %s' [%d]\n",
+                    job->cmds[0]->command, (job->cmds[0]->args)[1], retval);
+            job_free(job);
             continue;
         }
 
@@ -84,6 +86,7 @@ int main() {
 
         fprintf(stderr, "+ completed '%s %s' [%d]\n",
                 job->cmds[0]->command, (job->cmds[0]->args)[1], retval);
+        job_free(job);
 
     } while(1);
 

@@ -8,15 +8,7 @@
 
 #include "input.h"
 
-/*
- * Fills a string to contain only the null-terminated user input without
- * a trailing endline character.
- * 
- * Returns:
- *  - False if input is empty
- *  - True otherwise
- */
- bool input_parse_input(char * string, size_t string_size) {
+bool input_parse_input(char * string, size_t string_size) {
     uint32_t string_idx = 0;
 
     // Collect user input
