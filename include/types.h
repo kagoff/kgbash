@@ -8,6 +8,7 @@ typedef struct cmd {
 
 typedef struct job {
     cmd_s* cmds[INPUT_ARRAY_LEN];
+    int retvals[INPUT_ARRAY_LEN];
     bool *pipe_to_next;
     bool redirect_out;
     bool redirect_in;

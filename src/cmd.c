@@ -26,9 +26,9 @@ void cmd_free(cmd_s **cmd_ptr) {
 
     uint32_t arg_idx = 0;
     while(arg_idx < cmd->argc) {
-        free((cmd->args)[arg_idx++]);
+        free(cmd->args[arg_idx++]);
     }
-    // TODO: figure out how to do this properly
+
     free(cmd);
     cmd = NULL;
 }

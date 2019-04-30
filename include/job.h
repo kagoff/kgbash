@@ -9,6 +9,10 @@ bool job_is_exit_string(const job_s *job);
 
 bool job_fill_from_input (job_s* job, const char* string);
 
-bool job_run_internal(const job_s* job);
+bool job_run_internal(job_s* job);
+
+void job_run_background (job_s *job);
+
+void job_run (job_s *job);
 
 #endif //CMDS_H

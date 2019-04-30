@@ -4,12 +4,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdbool.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 
 #include "definitions.h"
 #include "types.h"
 #include "input.h"
+#include "output.h"
 #include "job.h"
 
 #include "kgbash.h"
@@ -21,23 +20,20 @@ int main() {
 
     char input[INPUT_ARRAY_LEN];
     job_s *job;
-    int retval;
-    pid_t pid;
 
     do {
         // Reset user input
         memset(input, 0, INPUT_ARRAY_LEN*sizeof(char));
 
         // Prompt user for input
-        fprintf(stdout, "kgbash: ");
+        fprintf(stdout, "kgbash$ ");
 
         // Gather user input data, and skip fork if empty
         if(!input_parse_input(input, INPUT_ARRAY_LEN)) {
-            fprintf(stdout, "\n");
             continue;
         }
 
-        // TODO: separate out the input into distinct command arguments
+        // Create a job of commands from the user input
         job = job_create();
         if(!job_fill_from_input(job, input)) {
             fprintf(stderr, "Invalid input: %s\n", input);
@@ -59,33 +55,23 @@ int main() {
         }
 
         // If we run an internal command, execute and continue
-        // TODO: eventually make this sleepable...
+        // TODO: make sure this can be piped and output redirected
         if(job_run_internal(job)) {
-            fprintf(stderr, "+ completed '%s %s' [%d]\n",
-                    (job->cmds[0]->args)[1], (job->cmds[0]->args)[1], retval);
+            output_completion(job);
             job_free(&job);
             continue;
         }
 
-        // DEBUG: Display the user's command
-        fprintf(stdout, "%s\n", (job->cmds[0]->args)[0]);
-
-        pid = fork();
-        if (pid == 0) {
-            execvp(job->cmds[0]->args[0], job->cmds[0]->args);
-            exit(EXIT_FAILURE);
-        }
-        else if (pid > 0) {
-            wait(&retval);
-            // TODO: retrieve this retval correctly
-            retval = EXIT_SUCCESS;
-        }
-        else {
-            exit(EXIT_FAILURE);
+        // Execute the job
+        if(job->sleep) {
+            job_run_background(job);
+            continue;
+        } else {
+            job_run(job);
         }
 
-        fprintf(stderr, "+ completed '%s %s' [%d]\n",
-                (job->cmds[0]->args)[0], (job->cmds[0]->args)[1], retval);
+        // Output result and free the job to start over
+        output_completion(job);
         job_free(&job);
 
     } while(1);
