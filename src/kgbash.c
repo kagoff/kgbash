@@ -41,7 +41,7 @@ int main() {
         job = job_create();
         if(!job_fill_from_input(job, input)) {
             fprintf(stderr, "Invalid input: %s\n", input);
-            job_free(job);
+            job_free(&job);
             continue;
         }
 
@@ -49,11 +49,11 @@ int main() {
         if(job_is_exit_string(job)) {
             if(!active_jobs) {
                 fprintf(stderr, "Bye...\n");
-                job_free(job);
+                job_free(&job);
                 return EXIT_SUCCESS;
             } else {
                 fprintf(stderr, "Error: active jobs still running\n");
-                job_free(job);
+                job_free(&job);
                 continue;
             }
         }
@@ -62,17 +62,17 @@ int main() {
         // TODO: eventually make this sleepable...
         if(job_run_internal(job)) {
             fprintf(stderr, "+ completed '%s %s' [%d]\n",
-                    job->cmds[0]->command, (job->cmds[0]->args)[1], retval);
-            job_free(job);
+                    (job->cmds[0]->args)[1], (job->cmds[0]->args)[1], retval);
+            job_free(&job);
             continue;
         }
 
         // DEBUG: Display the user's command
-        fprintf(stdout, "%s\n", job->cmds[0]->command);
+        fprintf(stdout, "%s\n", (job->cmds[0]->args)[0]);
 
         pid = fork();
         if (pid == 0) {
-            execvp(job->cmds[0]->command, job->cmds[0]->args);
+            execvp(job->cmds[0]->args[0], job->cmds[0]->args);
             exit(EXIT_FAILURE);
         }
         else if (pid > 0) {
@@ -85,8 +85,8 @@ int main() {
         }
 
         fprintf(stderr, "+ completed '%s %s' [%d]\n",
-                job->cmds[0]->command, (job->cmds[0]->args)[1], retval);
-        job_free(job);
+                (job->cmds[0]->args)[0], (job->cmds[0]->args)[1], retval);
+        job_free(&job);
 
     } while(1);
 

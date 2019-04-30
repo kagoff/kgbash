@@ -49,15 +49,16 @@ job_s *job_create(void) {
     return job;
 }
 
-void job_free(job_s *job) {
-    if(!job) {
+void job_free(job_s **job_ptr) {
+    if(!job_ptr || !(*job_ptr)) {
         return;
     }
+    job_s *job = *job_ptr;
+
     uint32_t cmd_idx = 0;
     while((job->cmds)[cmd_idx]) {
-        cmd_free((job->cmds)[cmd_idx++]);
+        cmd_free(&((job->cmds)[cmd_idx++]));
     }
-    free(job->cmds);
 
     if(job->pipe_to_next) {
         free(job->pipe_to_next);
@@ -65,11 +66,12 @@ void job_free(job_s *job) {
 
     // Clear job pointer
     free(job);
+    job = NULL;
 }
 
 bool job_is_exit_string(const job_s* job) {
-    if(job && job->cmds[0]) {
-        const char* cmd = job->cmds[0]->command;
+    if(job && job->cmds[0] && job->cmds[0]->args[0]) {
+        const char* cmd = job->cmds[0]->args[0];
         if(!strncmp(cmd, EXIT_STRING, sizeof(EXIT_STRING)-1)) {
             return true;
         }
@@ -103,25 +105,26 @@ bool job_fill_from_input (job_s* job, const char* string) {
     }
 
     // Get the name of the command to run
+    (cmd->args)[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
     while(!is_white_space_or_null(string[str_idx]) &&
           str_idx < INPUT_ARRAY_LEN &&
           cmd_str_idx < INPUT_ARRAY_LEN) {
-        (cmd->command)[cmd_str_idx++] = string[str_idx++];
+        (cmd->args)[arg_idx][cmd_str_idx++] = string[str_idx++];
     }
-    // TODO: check boundaries here
-    (cmd->command)[cmd_str_idx] = '\0';
-    (cmd->args)[arg_idx] = (char*)&(cmd->command);
+    // TODO: improve this?
+    if(cmd_str_idx == INPUT_ARRAY_LEN) {
+        (cmd->args)[arg_idx][cmd_str_idx] = '\0';
+    } else {
+        (cmd->args)[arg_idx][cmd_str_idx-1] = '\0';
+    }
+
 
     // If reached null terminator, stop
     if(string[str_idx] == '\0') {
-        if(arg_idx < (ARG_ARRAY_LEN-1)) {
-            (cmd->args)[arg_idx+1] = NULL;
-            (cmd->argc) = arg_idx+1;
-            job->cmds[0] = cmd;
-            return true;
-        } else {
-            return false;
-        }
+        cmd->argc = arg_idx+1;
+        (cmd->args)[arg_idx+1] = NULL;
+        (job->cmds)[0] = cmd;
+        return true;
     }
 
     // Gather args
@@ -154,17 +157,17 @@ bool job_fill_from_input (job_s* job, const char* string) {
             }
         }
     }
-    (cmd->argc) = arg_idx;
+    (cmd->argc) = arg_idx+1;
     job->cmds[0] = cmd;
     return true;
 }
 
 // TODO: write this
 bool job_run_internal(const job_s* job) {
-    if(!job || !job->cmds[0]) {
+    if(!job || !job->cmds[0] || !(job->cmds[0]->args)[0]) {
         return false;
     }
-    const char* cmd = job->cmds[0]->command;
+    const char* cmd = (job->cmds[0]->args)[0];
     char cur_dir[PATH_MAX];
 
     if(!strncmp(cmd, PWD_STRING, sizeof(PWD_STRING))) {

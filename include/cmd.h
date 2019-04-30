@@ -3,6 +3,6 @@
 
 cmd_s *cmd_create();
 
-void cmd_free(cmd_s *cmd);
+void cmd_free(cmd_s **cmd);
 
 #endif //CMD_H

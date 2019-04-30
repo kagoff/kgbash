@@ -3,7 +3,7 @@
 
 job_s *job_create(void);
 
-void job_free(job_s *job);
+void job_free(job_s **job);
 
 bool job_is_exit_string(const job_s *job);
 
