@@ -59,17 +59,20 @@ int main() {
         ret = job_run(job, job->sleep);
 
         // Don't free memory if the job was slept
-        // TODO: this should actually not be needed and can be taken care of
-        //      within job_run call
         if(job->sleep) {
+            active_jobs = true;
             continue;
         }
 
         // Output result and free the job to start over
-        output_completion(job);
+        output_completion_ret(job, ret);
         job_free(&job);
 
         // TODO: check here for completed jobs
+        // do {
+            // job = job_check_completed();
+            // output_completion_ret(job, ret);
+        // } while(job);
 
     } while(1);
 

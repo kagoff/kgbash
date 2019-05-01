@@ -53,6 +53,16 @@ static inline bool is_special_token(char token) {
             return false;
     }
 }
+static inline void clear_leading_whitespace(const char* string, uint32_t *str_idx) {
+    while(is_white_space(string[*str_idx])) {
+        (*str_idx)++;
+    }
+}
+static inline void assign_command(job_s *job, cmd_s *cmd, uint32_t cmd_idx, uint32_t argc) {
+    cmd->args[argc] = NULL;
+    cmd->argc = argc;
+    job->cmds[cmd_idx] = cmd;
+}
 
 job_s *job_create(void) {
     job_s *job = malloc(sizeof(job_s));
@@ -60,7 +70,7 @@ job_s *job_create(void) {
         job->cmds[cmd_idx] = NULL;
         job->retvals[cmd_idx] = 0;
     }
-    job->pipe_to_next = NULL;
+    job->pipes = 0;
     job->redirect_in = false;
     job->redirect_out = false;
     job->sleep = false;
@@ -76,10 +86,6 @@ void job_free(job_s **job_ptr) {
     uint32_t cmd_idx = 0;
     while((job->cmds)[cmd_idx]) {
         cmd_free(&((job->cmds)[cmd_idx++]));
-    }
-
-    if(job->pipe_to_next) {
-        free(job->pipe_to_next);
     }
 
     // Clear job pointer
@@ -108,14 +114,11 @@ job_fill_from_input (job_s* job, const char* string) {
     uint32_t str_idx = 0;
     uint32_t arg_idx = 0;
     uint32_t cmd_str_idx = 0;
-    uint32_t n_cmds = 0;
+    uint32_t cmd_idx = 0;
+    bool piped = false;
 
-    cmd_s *cmd = cmd_create();
-
-    // Skip leading white space and return if nothing found
-    while(is_white_space(string[str_idx])) {
-        str_idx++;
-    }
+    // Return if NULL or a special token found first
+    clear_leading_whitespace(string, &str_idx);
     if(is_null(string[str_idx])) {
         return KGBASH_RET_EMPTY_INPUT;
     } else if(is_special_token(string[str_idx])) {
@@ -134,91 +137,99 @@ job_fill_from_input (job_s* job, const char* string) {
         }
     }
 
-    // Get the name of the command to run
-    (cmd->args)[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
-    while(!is_white_space_or_null(string[str_idx]) &&
-          str_idx < INPUT_ARRAY_LEN &&
-          cmd_str_idx < INPUT_ARRAY_LEN) {
-        cmd->args[arg_idx][cmd_str_idx++] = string[str_idx++];
-    }
+    // Go through each command until pipes are found
+    while(1) {
+        // Allocate stack memory (freed by cmd_free)
+        cmd_s *cmd = cmd_create();
+        // TODO: make function for this
+        (cmd->args)[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
 
-    // If reached null terminator, stop
-    if(string[str_idx] == '\0') {
-        cmd->argc = arg_idx+1;
-        cmd->args[arg_idx+1] = NULL;
-        job->cmds[0] = cmd;
-        return KGBASH_RET_SUCCESS;
-    }
-
-    // Gather args
-    while(arg_idx < INPUT_ARRAY_LEN-1) {
-        cmd_str_idx = 0;
-        arg_idx++; //increment first since we already set first arg to the cmd
-
-        // Skip over white space 
-        while(is_white_space_or_null(string[str_idx])) {
-            str_idx++;
-        }
-
-        // Check for redirect
-        if(is_output_redirect(string[str_idx])) {
-            job->redirect_out = true;
-            cmd->args[arg_idx] = NULL;
-            cmd->argc = arg_idx;
-            job->cmds[0] = cmd;
-            str_idx++;
-        } else if(is_input_redirect(string[str_idx])) {
-            job->redirect_in = true;
-            cmd->args[arg_idx] = NULL;
-            cmd->argc = arg_idx;
-            job->cmds[0] = cmd;
-            str_idx++;
-        }
-        // TODO: check for pipes
-
-        while(is_white_space(string[str_idx])) {
-            str_idx++;
-        }
-
-        // If redirecting, there should be no more args
-        if(!job->redirect_out && !job->redirect_in) {
-            cmd->args[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
-        }
-
-        // For each command index, parse the string until a special token
+        // Get the name of the command to run
         while(!is_white_space_or_null(string[str_idx]) &&
-              str_idx < INPUT_ARRAY_LEN && cmd_str_idx < INPUT_ARRAY_LEN) {
-            // If args still being collected, fill arg
-            if(!job->redirect_out && !job->redirect_in) {
-                cmd->args[arg_idx][cmd_str_idx++] = string[str_idx++];
-            // Otherwise, fill the file name
-            } else {
-                job->file[cmd_str_idx++] = string[str_idx++];
-            }
-        }
-
-        // TODO: check for misplaced redirect!
-        if(job->redirect_out || job->redirect_in) {
-            return KGBASH_RET_SUCCESS;
-        }
-
-        while(is_white_space(string[str_idx])) {
-            str_idx++;
+              str_idx < INPUT_ARRAY_LEN &&
+              cmd_str_idx < INPUT_ARRAY_LEN) {
+            cmd->args[arg_idx][cmd_str_idx++] = string[str_idx++];
         }
 
         // If reached null terminator, stop
         if(string[str_idx] == '\0') {
-            cmd->args[arg_idx+1] = NULL;
-            cmd->argc = arg_idx+1;
-            job->cmds[0] = cmd;
+            assign_command(job, cmd, cmd_idx, arg_idx+1);
+            return KGBASH_RET_SUCCESS;
+        }
+
+        // Gather args
+        piped = false;
+        while(!piped && arg_idx < INPUT_ARRAY_LEN-1) {
+            cmd_str_idx = 0;
+            arg_idx++; //increment first since we already set first arg to the cmd
+
+            // Skip over white space 
+            while(is_white_space_or_null(string[str_idx])) {
+                str_idx++;
+            }
+
+            // Check for redirect
+            if(is_output_redirect(string[str_idx])) {
+                // TODO: check command and arg index to see if in wrong spot
+                job->redirect_out = true;
+                assign_command(job, cmd, cmd_idx, arg_idx);
+                str_idx++;
+            } else if(is_input_redirect(string[str_idx])) {
+                // TODO: check arg_idx and cmd_idx to see if in wrong spot
+                job->redirect_in = true;
+                assign_command(job, cmd, cmd_idx, arg_idx);
+                str_idx++;
+            } else if (is_pipe(string[str_idx])) {
+                piped = true;
+                job->pipes++;
+                assign_command(job, cmd, cmd_idx, arg_idx);
+                str_idx++;
+            }
+
+            while(is_white_space(string[str_idx])) {
+                str_idx++;
+            }
+
+            // If redirecting, there should be no more args
+            if(!job->redirect_out && !job->redirect_in) {
+                cmd->args[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
+            }
+
+            // For each command index, parse the string until a special token
+            while(!is_white_space_or_null(string[str_idx]) &&
+                  str_idx < INPUT_ARRAY_LEN && cmd_str_idx < INPUT_ARRAY_LEN) {
+                // If args still being collected, fill arg
+                if(!job->redirect_out && !job->redirect_in) {
+                    cmd->args[arg_idx][cmd_str_idx++] = string[str_idx++];
+                // Otherwise, fill the file name
+                } else {
+                    job->file[cmd_str_idx++] = string[str_idx++];
+                }
+            }
+
+            // TODO: check for misplaced redirect!
+            if(job->redirect_out || job->redirect_in) {
+                return KGBASH_RET_SUCCESS;
+            }
+
+            while(is_white_space(string[str_idx])) {
+                str_idx++;
+            }
+
+            // If reached null terminator, stop
+            if(string[str_idx] == '\0') {
+                assign_command(job, cmd, cmd_idx, arg_idx+1);
+                return KGBASH_RET_SUCCESS;
+            }
+        }
+        // User gave too many arguments, overwrite the last one with NULL
+        assign_command(job, cmd, cmd_idx, arg_idx);
+
+        // Rare case of end of arg array on last command
+        if(!piped) {
             return KGBASH_RET_SUCCESS;
         }
     }
-    // User gave too many arguments, overwrite the last one with NULL
-    cmd->args[arg_idx] = NULL;
-    cmd->argc = arg_idx;
-    job->cmds[0] = cmd;
-    return KGBASH_RET_SUCCESS;
 }
 
 kgbash_result_e
