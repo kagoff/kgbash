@@ -20,6 +20,7 @@ int main() {
 
     char input[INPUT_ARRAY_LEN];
     job_s *job;
+    kgbash_result_e ret;
 
     do {
         // Reset user input
@@ -35,7 +36,7 @@ int main() {
 
         // Create a job of commands from the user input
         job = job_create();
-        if(!job_fill_from_input(job, input)) {
+        if(job_fill_from_input(job, input) != KGBASH_RET_SUCCESS) {
             fprintf(stderr, "Invalid input: %s\n", input);
             job_free(&job);
             continue;
@@ -54,16 +55,8 @@ int main() {
             }
         }
 
-        // If we run an internal command, execute and continue
-        // TODO: make sure this can be piped and output redirected
-        if(job_run_internal(job)) {
-            output_completion(job);
-            job_free(&job);
-            continue;
-        }
-
         // Execute the job
-        job_run(job, job->sleep);
+        ret = job_run(job, job->sleep);
 
         // Don't free memory if the job was slept
         // TODO: this should actually not be needed and can be taken care of

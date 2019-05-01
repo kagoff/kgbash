@@ -7,10 +7,10 @@ void job_free(job_s **job);
 
 bool job_is_exit_string(const job_s *job);
 
-bool job_fill_from_input (job_s* job, const char* string);
+kgbash_result_e job_fill_from_input (job_s* job, const char* string);
 
 bool job_run_internal(job_s* job);
 
-void job_run (job_s *job, bool sleep);
+kgbash_result_e job_run (job_s *job, bool sleep);
 
 #endif //CMDS_H

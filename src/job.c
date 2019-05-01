@@ -34,10 +34,24 @@ static inline bool is_white_space(char token) {
     return false;
 }
 static inline bool is_white_space_or_null(char token) {
-    if(is_white_space(token) || is_null(token)) {
-        return true;
+    switch(token) {
+        case ' ':
+        case '\t':
+        case '\0':
+            return true;
+        default:
+            return false;
     }
-    return false;
+}
+static inline bool is_special_token(char token) {
+    switch(token) {
+        case '|':
+        case '<':
+        case '>':
+            return true;
+        default:
+            return false;
+    }
 }
 
 job_s *job_create(void) {
@@ -83,11 +97,12 @@ bool job_is_exit_string(const job_s* job) {
     return false;
 }
 
-bool job_fill_from_input (job_s* job, const char* string) {
+kgbash_result_e
+job_fill_from_input (job_s* job, const char* string) {
 
     // Sanity check
     if(!job || !string) {
-        return false;
+        return KGBASH_RET_NULL_PARAM;
     }
 
     uint32_t str_idx = 0;
@@ -102,7 +117,21 @@ bool job_fill_from_input (job_s* job, const char* string) {
         str_idx++;
     }
     if(is_null(string[str_idx])) {
-        return false;
+        return KGBASH_RET_EMPTY_INPUT;
+    } else if(is_special_token(string[str_idx])) {
+        switch(string[str_idx]) {
+            case '<':
+                return KGBASH_RET_MISPLACED_INPUT_REDIRECT;
+                break;
+            case '>':
+                return KGBASH_RET_MISPLACED_OUTPUT_REDIRECT;
+                break;
+            case '|':
+                return KGBASH_RET_MISPLACED_PIPE;
+                break;
+            default:
+                return KGBASH_RET_FAIL;
+        }
     }
 
     // Get the name of the command to run
@@ -112,20 +141,13 @@ bool job_fill_from_input (job_s* job, const char* string) {
           cmd_str_idx < INPUT_ARRAY_LEN) {
         cmd->args[arg_idx][cmd_str_idx++] = string[str_idx++];
     }
-    // TODO: improve this?
-    if(cmd_str_idx == INPUT_ARRAY_LEN) {
-        cmd->args[arg_idx][cmd_str_idx-1] = '\0';
-    } else {
-        cmd->args[arg_idx][cmd_str_idx] = '\0';
-    }
-
 
     // If reached null terminator, stop
     if(string[str_idx] == '\0') {
         cmd->argc = arg_idx+1;
         cmd->args[arg_idx+1] = NULL;
         job->cmds[0] = cmd;
-        return true;
+        return KGBASH_RET_SUCCESS;
     }
 
     // Gather args
@@ -138,41 +160,91 @@ bool job_fill_from_input (job_s* job, const char* string) {
             str_idx++;
         }
 
-        cmd->args[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
+        // Check for redirect
+        if(is_output_redirect(string[str_idx])) {
+            job->redirect_out = true;
+            cmd->args[arg_idx] = NULL;
+            cmd->argc = arg_idx;
+            job->cmds[0] = cmd;
+            str_idx++;
+        } else if(is_input_redirect(string[str_idx])) {
+            job->redirect_in = true;
+            cmd->args[arg_idx] = NULL;
+            cmd->argc = arg_idx;
+            job->cmds[0] = cmd;
+            str_idx++;
+        }
+        // TODO: check for pipes
+
+        while(is_white_space(string[str_idx])) {
+            str_idx++;
+        }
+
+        // If redirecting, there should be no more args
+        if(!job->redirect_out && !job->redirect_in) {
+            cmd->args[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
+        }
 
         // For each command index, parse the string until a special token
         while(!is_white_space_or_null(string[str_idx]) &&
               str_idx < INPUT_ARRAY_LEN && cmd_str_idx < INPUT_ARRAY_LEN) {
-            cmd->args[arg_idx][cmd_str_idx++] = string[str_idx++];
+            // If args still being collected, fill arg
+            if(!job->redirect_out && !job->redirect_in) {
+                cmd->args[arg_idx][cmd_str_idx++] = string[str_idx++];
+            // Otherwise, fill the file name
+            } else {
+                job->file[cmd_str_idx++] = string[str_idx++];
+            }
+        }
+
+        // TODO: check for misplaced redirect!
+        if(job->redirect_out || job->redirect_in) {
+            return KGBASH_RET_SUCCESS;
+        }
+
+        while(is_white_space(string[str_idx])) {
+            str_idx++;
         }
 
         // If reached null terminator, stop
         if(string[str_idx] == '\0') {
-            if(arg_idx < (ARG_ARRAY_LEN-1)) {
-                cmd->args[arg_idx+1] = NULL;
-                cmd->argc = arg_idx+1;
-                job->cmds[0] = cmd;
-                return true;
-            } else {
-                return false;
-            }
+            cmd->args[arg_idx+1] = NULL;
+            cmd->argc = arg_idx+1;
+            job->cmds[0] = cmd;
+            return KGBASH_RET_SUCCESS;
         }
     }
-    cmd->argc = arg_idx+1;
+    // User gave too many arguments, overwrite the last one with NULL
+    cmd->args[arg_idx] = NULL;
+    cmd->argc = arg_idx;
     job->cmds[0] = cmd;
-    return true;
+    return KGBASH_RET_SUCCESS;
 }
 
-void job_run(job_s *job, bool sleep) {
+kgbash_result_e
+job_run(job_s *job, bool sleep) {
     pid_t pid;
     int stdin_fd = -1;
     int stdout_fd = -1;
+    kgbash_result_e ret;
 
     //TODO: check return values
     if(job->redirect_out) {
-        redirect_file_out(job->file, &stdout_fd);
+        ret = redirect_file_out(job->file, &stdout_fd);
+        if(ret != KGBASH_RET_SUCCESS) {
+            return ret;
+        }
     } else if(job->redirect_in) {
-        redirect_file_in(job->file, &stdin_fd);
+        ret = redirect_file_in(job->file, &stdin_fd);
+        if(ret != KGBASH_RET_SUCCESS) {
+            return ret;
+        }
+    }
+
+    if(job_run_internal(job)) {
+        job->retvals[0] = EXIT_SUCCESS;
+        redirect_reset_file_descriptors(stdin_fd, stdout_fd);
+        return KGBASH_RET_SUCCESS;
     }
 
     pid = fork();
@@ -187,7 +259,7 @@ void job_run(job_s *job, bool sleep) {
             job->retvals[0] = EXIT_SUCCESS;
         } else {
             // TODO: enqueue this pid to check later
-            return;
+            return KGBASH_RET_SUCCESS;
         }
     }
     else {
@@ -195,6 +267,7 @@ void job_run(job_s *job, bool sleep) {
     }
 
     redirect_reset_file_descriptors(stdin_fd, stdout_fd);
+    return KGBASH_RET_SUCCESS;
 }
 
 bool job_run_internal(job_s* job) {
