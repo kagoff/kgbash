@@ -10,6 +10,7 @@
 #include "definitions.h"
 #include "types.h"
 
+#include "redirect.h"
 #include "cmd.h"
 #include "job.h"
 
@@ -162,37 +163,38 @@ bool job_fill_from_input (job_s* job, const char* string) {
     return true;
 }
 
-void job_run_background(job_s *job) {
+void job_run(job_s *job, bool sleep) {
     pid_t pid;
-    pid = fork();
-    if (pid == 0) {
-        execvp(job->cmds[0]->args[0], job->cmds[0]->args);
-        exit(EXIT_FAILURE);
-    }
-    else if (pid > 0) {
-        // enqueue this pid to wait on later
-        return;
-    }
-    else {
-        exit(EXIT_FAILURE);
-    }
-}
+    int stdin_fd = -1;
+    int stdout_fd = -1;
 
-void job_run(job_s *job) {
-    pid_t pid;
+    //TODO: check return values
+    if(job->redirect_out) {
+        redirect_file_out(job->file, &stdout_fd);
+    } else if(job->redirect_in) {
+        redirect_file_in(job->file, &stdin_fd);
+    }
+
     pid = fork();
     if (pid == 0) {
         execvp(job->cmds[0]->args[0], job->cmds[0]->args);
         exit(EXIT_FAILURE);
     }
     else if (pid > 0) {
-        wait(&job->retvals[0]);
-        // TODO: retrieve this retval correctly
-        job->retvals[0] = EXIT_SUCCESS;
+        if(!sleep) {
+            wait(&job->retvals[0]);
+            // TODO: retrieve this retval correctly
+            job->retvals[0] = EXIT_SUCCESS;
+        } else {
+            // TODO: enqueue this pid to check later
+            return;
+        }
     }
     else {
         exit(EXIT_FAILURE);
     }
+
+    redirect_reset_file_descriptors(stdin_fd, stdout_fd);
 }
 
 bool job_run_internal(job_s* job) {

@@ -1,6 +1,12 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+typedef enum kgbash_result {
+    KGBASH_RET_SUCCESS = 0,
+    KGBASH_RET_FAIL,
+    KGBASH_RET_NULL_PARAM
+} kgbash_result_e;
+
 typedef struct cmd {
     char* args[ARG_ARRAY_LEN];
     size_t argc;
@@ -9,6 +15,7 @@ typedef struct cmd {
 typedef struct job {
     cmd_s* cmds[INPUT_ARRAY_LEN];
     int retvals[INPUT_ARRAY_LEN];
+    char file[INPUT_ARRAY_LEN];
     bool *pipe_to_next;
     bool redirect_out;
     bool redirect_in;

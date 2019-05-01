@@ -63,16 +63,20 @@ int main() {
         }
 
         // Execute the job
+        job_run(job, job->sleep);
+
+        // Don't free memory if the job was slept
+        // TODO: this should actually not be needed and can be taken care of
+        //      within job_run call
         if(job->sleep) {
-            job_run_background(job);
             continue;
-        } else {
-            job_run(job);
         }
 
         // Output result and free the job to start over
         output_completion(job);
         job_free(&job);
+
+        // TODO: check here for completed jobs
 
     } while(1);
 
