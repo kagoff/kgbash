@@ -56,7 +56,7 @@ int main() {
         }
 
         // Execute the job
-        ret = job_run(job, job->sleep);
+        ret = job_run(job);
 
         // Don't free memory if the job was slept
         if(job->sleep) {

@@ -11,6 +11,6 @@ kgbash_result_e job_fill_from_input (job_s* job, const char* string);
 
 bool job_run_internal(job_s* job);
 
-kgbash_result_e job_run (job_s *job, bool sleep);
+kgbash_result_e job_run (job_s *job);
 
 #endif //CMDS_H

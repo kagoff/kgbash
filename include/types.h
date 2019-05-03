@@ -14,13 +14,19 @@ typedef enum kgbash_result {
 typedef struct cmd {
     char* args[ARG_ARRAY_LEN];
     size_t argc;
+    int retval;
 } cmd_s;
 
 typedef struct job {
+    // TODO: dynamically allocate all of these to save memory
     cmd_s* cmds[INPUT_ARRAY_LEN];
-    int retvals[INPUT_ARRAY_LEN];
+
+    char raw_input[INPUT_ARRAY_LEN];
     char file[INPUT_ARRAY_LEN];
+
+    uint8_t num_cmds;
     uint8_t pipes;
+
     bool redirect_out;
     bool redirect_in;
     bool sleep;

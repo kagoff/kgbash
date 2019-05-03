@@ -11,6 +11,7 @@ cmd_s *cmd_create(void) {
     cmd_s *cmd = malloc(sizeof(cmd_s));
 
     cmd->argc = 0;
+    cmd->retval = 0;
     for(int arg_idx = 0; arg_idx < ARG_ARRAY_LEN; arg_idx++) {
         cmd->args[arg_idx] = NULL;
     }

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/wait.h>
 
 #include "definitions.h"
 #include "types.h"
@@ -14,13 +15,12 @@ output_completion(job_s* job) {
         return;
     }
 
-    fprintf(stderr, "+ completed '%s", job->cmds[0]->args[0]);
-    
-    for(uint32_t arg_idx = 1; arg_idx < job->cmds[0]->argc; arg_idx++) {
-        fprintf(stderr, " %s", job->cmds[0]->args[arg_idx]);
+    fprintf(stderr, "+ completed '%s' ", job->raw_input);
+    for(uint8_t cmd_idx; cmd_idx < job->num_cmds; cmd_idx++) {
+        fprintf(stderr, "[%d]", WEXITSTATUS(job->cmds[cmd_idx]->retval));
     }
 
-    fprintf(stderr, "' [%d]\n", job->retvals[0]);
+    fprintf(stderr, "\n");
 }
 
 void
