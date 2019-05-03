@@ -253,39 +253,76 @@ job_run_pipes(job_s* job) {
     }
 
     pid_t pid;
-    int fd[2];
+    int fd_old[2], fd_new[2];
     uint8_t cmd_idx = 0;
 
-    for(uint8_t pipes_left = job->pipes; pipes_left > 0; pipes_left--) {
+    pid_t child = 0;
+
+    if(job->redirect_in) {
+        ; //perform input redirection
+    }
+
+    // Create the first child
+    pipe(fd_old);
+    pid = fork();
+    if (pid != 0) {
+        child = pid;
+    } else if (pid == 0) {
+        close(fd_old[0]);
+        dup2(fd_old[1], STDOUT_FILENO);
+        close(fd_old[1]);
+
+        execvp(job->cmds[cmd_idx]->args[0], job->cmds[cmd_idx]->args);
+        exit(EXIT_FAILURE);
+    } else {
+        // Should never happen
+        exit(EXIT_FAILURE);
+    }
+
+    // Continue creating children and piping I/O
+    for(uint8_t pipes_left = job->pipes - 1; pipes_left > 0; pipes_left--) {
         // Check the index before dereferencing
         cmd_idx = (job->pipes) - pipes_left;
         if(!job->cmds[cmd_idx]) {
-            exit(EXIT_FAILURE);
+            return KGBASH_RET_FAIL;
         }
 
-        pipe(fd);
+        if(pipes_left == 0 && job->redirect_out) {
+            // ret = redirect_file_out(job->file, &stdout_fd);
+            // if(ret != KGBASH_RET_SUCCESS) {
+            //     return ret;
+            // }
+        }
+
+        pipe(fd_new);
         pid = fork();
         if (pid != 0) {
-            // Parent writes to pipe output
-            close(fd[0]);
-            dup2(fd[1], STDOUT_FILENO);
-            close(fd[1]);
+            waitpid(child, &job->cmds[cmd_idx-1]->retval, 0);
+            child = pid;
+            fd_old[0] = fd_new[0];
+            fd_old[1] = fd_new[1];
+        } else if (pid == 0) {
+            // Always set the input from previous child
+            close(fd_old[1]);
+            dup2(fd_old[0], STDIN_FILENO);
+            close(fd_old[0]);
+
+            // If there are more pipes remaining, also set output
+            if(pipes_left > 0) {
+                close(fd_new[0]);
+                dup2(fd_new[1], STDOUT_FILENO);
+                close(fd_new[1]);
+            }
+
             execvp(job->cmds[cmd_idx]->args[0], job->cmds[cmd_idx]->args);
             exit(EXIT_FAILURE);
-        } else if (pid == 0) {
-            // Child waits for parent to finish, then reads from pipe input
-            close(fd[1]);
-            dup2(fd[0], STDIN_FILENO);
-            close(fd[0]);
-            waitpid(pid, &job->cmds[cmd_idx]->retval, 0);
-            if(WEXITSTATUS(job->cmds[cmd_idx]->retval) == EXIT_FAILURE) {
-                exit(EXIT_FAILURE);
-            }
         } else {
             // Should never happen
             exit(EXIT_FAILURE);
         }
     }
+    // Collect the last command
+    waitpid(child, &job->cmds[cmd_idx]->retval, 0);
 
     return KGBASH_RET_SUCCESS;
 }
