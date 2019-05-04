@@ -26,6 +26,7 @@ typedef struct cmd {
     char* args[ARG_ARRAY_LEN];
     size_t argc;
     int retval;
+    pid_t pid;
 } cmd_s;
 
 typedef struct job {
