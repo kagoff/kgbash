@@ -225,13 +225,13 @@ job_run_pipes(job_s* job) {
     }
 
     pid_t pid;
-    int fd_old[2], fd_new[2];
+    pid_t child = 0;
+
     uint16_t cmd_idx = 0;
 
     int std_out = dup(STDOUT_FILENO);
     int std_in = dup(STDIN_FILENO);
-
-    pid_t child = 0;
+    int fd_old[2], fd_new[2];
 
     if(job->redirect_in) {
         kgbash_result_e ret = redirect_file_in(job->file, &std_in);
@@ -276,8 +276,15 @@ job_run_pipes(job_s* job) {
         pid = fork();
         if (pid != 0) {
             job->cmds[cmd_idx]->pid = pid;
-            fd_old[0] = fd_new[0];
-            fd_old[1] = fd_new[1];
+            close(fd_old[0]);
+            close(fd_old[1]);
+            if(pipes_left > 1) {
+                fd_old[0] = fd_new[0];
+                fd_old[1] = fd_new[1];
+            } else {
+                close(fd_new[0]);
+                close(fd_new[1]);
+            }
         } else if (pid == 0) {
             // Always set the input from previous child
             close(fd_old[1]);
@@ -301,10 +308,12 @@ job_run_pipes(job_s* job) {
     // Collect all the commands
     for(uint16_t pipes = (job->pipes + 1); pipes > 0; pipes--) {
         uint16_t cmd_idx = pipes - 1;
+        fprintf(stderr, "Collecting cmd=%d, pid=%d\n", cmd_idx, job->cmds[cmd_idx]->pid);
         waitpid(job->cmds[cmd_idx]->pid, &job->cmds[cmd_idx]->retval, 0);
+        fprintf(stderr, "Collected  cmd=%d, pid=%d\n", cmd_idx, job->cmds[cmd_idx]->pid);
     }
-    redirect_reset_file_descriptors(std_in, std_out);
 
+    redirect_reset_file_descriptors(std_in, std_out);
     return KGBASH_RET_SUCCESS;
 }
 
