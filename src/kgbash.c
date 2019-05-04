@@ -36,8 +36,9 @@ int main() {
 
         // Create a job of commands from the user input
         job = job_create();
-        if(job_fill_from_input(job, input) != KGBASH_RET_SUCCESS) {
-            fprintf(stderr, "Invalid input: %s\n", input);
+        ret = job_fill_from_input(job, input);
+        if(ret != KGBASH_RET_SUCCESS) {
+            output_completion_ret(job, ret);
             job_free(&job);
             continue;
         }
@@ -59,7 +60,7 @@ int main() {
         ret = job_run(job);
 
         // Don't free memory if the job was slept
-        if(job->sleep) {
+        if(job->sleep && ret == KGBASH_RET_SUCCESS) {
             active_jobs = true;
             continue;
         }

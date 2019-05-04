@@ -29,14 +29,14 @@ output_completion_ret(job_s *job, kgbash_result_e ret) {
         case KGBASH_RET_SUCCESS:
             output_completion(job);
             break;
-        case KGBASH_RET_MISPLACED_INPUT_REDIRECT:
-            // output_misplaced_input_redirect();
+        case KGBASH_RET_MISLOCATED_INPUT_REDIRECT:
+            fprintf(stderr, "Error: mislocated input redirect\n");
             break;
-        case KGBASH_RET_MISPLACED_OUTPUT_REDIRECT:
-            // output_misplaced_output_redirect();
+        case KGBASH_RET_MISLOCATED_OUTPUT_REDIRECT:
+            fprintf(stderr, "Error: mislocated output redirect\n");
             break;
-        case KGBASH_RET_MISPLACED_PIPE:
-            // output_misplaced_pipe();
+        case KGBASH_RET_MISLOCATED_PIPE:
+            fprintf(stderr, "Error: mislocated pipe\n");
             break;
         default:
             break;

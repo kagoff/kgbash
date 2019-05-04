@@ -63,16 +63,16 @@ static inline void assign_command(job_s *job, cmd_s *cmd, uint32_t cmd_idx, uint
     cmd->argc = argc;
     job->cmds[cmd_idx] = cmd;
 }
-static inline kgbash_result_e misplaced_token_return_value(char token) {
+static inline kgbash_result_e mislocated_token_return_value(char token) {
     switch(token) {
         case '<':
-            return KGBASH_RET_MISPLACED_INPUT_REDIRECT;
+            return KGBASH_RET_MISLOCATED_INPUT_REDIRECT;
             break;
         case '>':
-            return KGBASH_RET_MISPLACED_OUTPUT_REDIRECT;
+            return KGBASH_RET_MISLOCATED_OUTPUT_REDIRECT;
             break;
         case '|':
-            return KGBASH_RET_MISPLACED_PIPE;
+            return KGBASH_RET_MISLOCATED_PIPE;
             break;
         default:
             return KGBASH_RET_FAIL;
@@ -151,7 +151,7 @@ job_fill_from_input (job_s* job, const char* string) {
         // Return if token found first, or just after a pipe
         clear_leading_whitespace(string, &str_idx);
         if(is_special_token(string[str_idx])) {
-            return misplaced_token_return_value(string[str_idx]);
+            return mislocated_token_return_value(string[str_idx]);
         }
         // Allocate stack memory (freed by cmd_free)
         cmd_s *cmd = cmd_create();
@@ -221,7 +221,7 @@ job_fill_from_input (job_s* job, const char* string) {
                 }
             }
 
-            // TODO: check for misplaced redirect and for extra characters!
+            // TODO: check for mislocated redirect and for extra characters!
             if(job->redirect_out || job->redirect_in) {
                 return KGBASH_RET_SUCCESS;
             }
@@ -229,6 +229,13 @@ job_fill_from_input (job_s* job, const char* string) {
 
             // If reached null terminator, stop
             if(string[str_idx] == '\0') {
+                // if(job->file[0] == '\0') {
+                //     if(job->redirect_out) {
+                //         return KGBASH_RET_MISLOCATED_OUTPUT_REDIRECT;
+                //     } else if (job->redirect_in) {
+                //         return KGBASH_RET_MISLOCATED_INPUT_REDIRECT;
+                //     }
+                // }
                 assign_command(job, cmd, cmd_idx, arg_idx+1);
                 return KGBASH_RET_SUCCESS;
             }
