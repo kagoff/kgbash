@@ -10,73 +10,52 @@
 #include "definitions.h"
 #include "types.h"
 
+#include "input.h"
 #include "redirect.h"
 #include "cmd.h"
 #include "job.h"
 
-// Local character checking functions
-static inline bool is_output_redirect(char token) {
-    return token == '>' ? true : false;
-}
-static inline bool is_input_redirect(char token) {
-    return token == '<' ? true : false;
-}
-static inline bool is_pipe(char token) {
-    return token == '|' ? true : false;
-}
-static inline bool is_null(char token) {
-    return token == '\0' ? true: false;
-}
-static inline bool is_white_space(char token) {
-    if(token == ' ' || token == '\t') {
-        return true;
-    }
-    return false;
-}
-static inline bool is_white_space_or_null(char token) {
-    switch(token) {
-        case ' ':
-        case '\t':
-        case '\0':
+static inline bool
+is_item_redirect_token(previous_item) {
+    switch(previous_item) {
+        case KGBASH_ITEM_TYPE_INPUT_REDIRECT:
+        case KGBASH_ITEM_TYPE_OUTPUT_REDIRECT:
             return true;
         default:
             return false;
     }
 }
-static inline bool is_special_token(char token) {
-    switch(token) {
-        case '|':
-        case '<':
-        case '>':
+
+static inline bool
+is_item_pipe_or_empty(previous_item) {
+    switch(previous_item) {
+        case KGBASH_ITEM_TYPE_EMPTY:
+        case KGBASH_ITEM_TYPE_PIPE:
             return true;
         default:
             return false;
     }
 }
-static inline void clear_leading_whitespace(const char* string, uint32_t *str_idx) {
-    while(is_white_space(string[*str_idx])) {
-        (*str_idx)++;
+
+static inline bool
+is_item_special_token_or_empty(previous_item) {
+    switch(previous_item) {
+        case KGBASH_ITEM_TYPE_EMPTY:
+        case KGBASH_ITEM_TYPE_INPUT_REDIRECT:
+        case KGBASH_ITEM_TYPE_OUTPUT_REDIRECT:
+        case KGBASH_ITEM_TYPE_PIPE:
+        case KGBASH_ITEM_TYPE_SLEEP:
+            return true;
+        default:
+            return false;
     }
 }
-static inline void assign_command(job_s *job, cmd_s *cmd, uint32_t cmd_idx, uint32_t argc) {
+
+static inline void
+assign_command(job_s *job, cmd_s *cmd, uint32_t cmd_idx, uint32_t argc) {
     cmd->args[argc] = NULL;
     cmd->argc = argc;
     job->cmds[cmd_idx] = cmd;
-}
-static inline kgbash_result_e mislocated_token_return_value(char token) {
-    switch(token) {
-        case '<':
-            return KGBASH_RET_MISLOCATED_INPUT_REDIRECT;
-            break;
-        case '>':
-            return KGBASH_RET_MISLOCATED_OUTPUT_REDIRECT;
-            break;
-        case '|':
-            return KGBASH_RET_MISLOCATED_PIPE;
-            break;
-        default:
-            return KGBASH_RET_FAIL;
-    }
 }
 
 job_s *job_create(void) {
@@ -128,129 +107,115 @@ job_fill_from_input (job_s* job, const char* string) {
         return KGBASH_RET_NULL_PARAM;
     }
 
-    uint32_t str_idx = 0;
-    uint32_t arg_idx = 0;
-    uint32_t cmd_str_idx = 0;
-    uint32_t cmd_idx = 0;
-    bool piped = false;
+    cmd_s *cmd = NULL;
+
+    char    item[INPUT_ARRAY_LEN];
+    uint16_t str_idx  = 0;
+    uint16_t arg_idx  = 0;
+    uint16_t cmd_idx  = 0;
+    uint16_t item_idx = 0;
 
     // Save the raw input for later
     memcpy(job->raw_input, string, INPUT_ARRAY_LEN);
     job->raw_input[INPUT_ARRAY_LEN-1] = '\0';
 
-    // Called in between every found arg or token
-    clear_leading_whitespace(string, &str_idx);
+    // Initialize item types
+    kgbash_item_type_e previous_item = KGBASH_ITEM_TYPE_EMPTY;
+    kgbash_item_type_e item_type = KGBASH_ITEM_TYPE_CMD_OR_ARG;
 
-    // Return emtpy error if NULL found first
-    if(is_null(string[str_idx])) {
-        return KGBASH_RET_EMPTY_INPUT;
-    }
+    // Continue grabbing items and making decisions until input is emptied
+    item_type = input_grab_next_item(string, &str_idx, item, &item_idx);
+    while(item_type != KGBASH_ITEM_TYPE_EMPTY) {
 
-    // Go through each command until pipes are found
-    while(1) {
-        // Return if token found first, or just after a pipe
-        clear_leading_whitespace(string, &str_idx);
-        if(is_special_token(string[str_idx])) {
-            return mislocated_token_return_value(string[str_idx]);
-        }
-        // Allocate stack memory (freed by cmd_free)
-        cmd_s *cmd = cmd_create();
-        job->num_cmds++;
-        // TODO: make function for this
-        (cmd->args)[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
-
-        // Get the name of the command to run
-        while(!is_white_space_or_null(string[str_idx]) &&
-              str_idx < INPUT_ARRAY_LEN &&
-              cmd_str_idx < INPUT_ARRAY_LEN) {
-            cmd->args[arg_idx][cmd_str_idx++] = string[str_idx++];
-        }
-        clear_leading_whitespace(string, &str_idx);
-
-        // If reached null terminator, stop
-        if(string[str_idx] == '\0') {
-            assign_command(job, cmd, cmd_idx, arg_idx+1);
-            return KGBASH_RET_SUCCESS;
-        }
-
-        // Gather args
-        piped = false;
-        while(!piped && arg_idx < INPUT_ARRAY_LEN-1) {
-            cmd_str_idx = 0;
-            arg_idx++; //increment first since we already set first arg to the cmd
-
-            // Skip over white space 
-            while(is_white_space_or_null(string[str_idx])) {
-                str_idx++;
-            }
-
-            // Check for redirect
-            if(is_output_redirect(string[str_idx])) {
-                // TODO: check command and arg index to see if in wrong spot
-                job->redirect_out = true;
-                assign_command(job, cmd, cmd_idx, arg_idx);
-                str_idx++;
-            } else if(is_input_redirect(string[str_idx])) {
-                // TODO: check arg_idx and cmd_idx to see if in wrong spot
-                job->redirect_in = true;
-                assign_command(job, cmd, cmd_idx, arg_idx);
-                str_idx++;
-            } else if (is_pipe(string[str_idx])) {
-                piped = true;
-                job->pipes++;
-                // assign_command(job, cmd, cmd_idx, arg_idx);
-                str_idx++;
-                break;
-            }
-            clear_leading_whitespace(string, &str_idx);
-
-            // If redirecting, there should be no more args
-            if(!job->redirect_out && !job->redirect_in) {
-                cmd->args[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
-            }
-
-            // For each command index, parse the string until a special token
-            while(!is_white_space_or_null(string[str_idx]) &&
-                  str_idx < INPUT_ARRAY_LEN && cmd_str_idx < INPUT_ARRAY_LEN) {
-                // If args still being collected, fill arg
-                if(!job->redirect_out && !job->redirect_in) {
-                    cmd->args[arg_idx][cmd_str_idx++] = string[str_idx++];
-                // Otherwise, fill the file name
-                } else {
-                    job->file[cmd_str_idx++] = string[str_idx++];
+        switch(item_type) {
+            case KGBASH_ITEM_TYPE_CMD_OR_ARG:
+                // Allocate memory for a new command first time this type
+                // appears at beginning or after token
+                if(is_item_pipe_or_empty(previous_item)) {
+                    // Assign the command if reached the next one
+                    if(previous_item != KGBASH_ITEM_TYPE_EMPTY) {
+                        assign_command(job, cmd, cmd_idx, arg_idx);
+                        cmd_idx++;
+                    }
+                    arg_idx = 0;
+                    cmd = cmd_create();
+                    job->num_cmds++;
+                    (cmd->args)[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
+                    memset((cmd->args)[arg_idx], 0, INPUT_ARRAY_LEN);
+                    memcpy(cmd->args[arg_idx++], item, item_idx);
                 }
-            }
+                // After a redirect, grab the file and finish up
+                else if(is_item_redirect_token(previous_item)) {
+                    memcpy(job->file, item, item_idx);
+                    assign_command(job, cmd, cmd_idx, arg_idx);
+                    return KGBASH_RET_SUCCESS;
+                }
+                // Make sure we don't go over the arg limit
+                else if(arg_idx < MAX_ARGS) {
+                    (cmd->args)[arg_idx] = malloc(INPUT_ARRAY_LEN*sizeof(char));
+                    memset((cmd->args)[arg_idx], 0, INPUT_ARRAY_LEN);
+                    memcpy(cmd->args[arg_idx++], item, item_idx);
+                } else {
+                    (cmd->args)[MAX_ARGS] = NULL;
+                    break;
+                }
+                break;
 
-            // TODO: check for mislocated redirect and for extra characters!
-            if(job->redirect_out || job->redirect_in) {
-                return KGBASH_RET_SUCCESS;
-            }
-            clear_leading_whitespace(string, &str_idx);
+            case KGBASH_ITEM_TYPE_INPUT_REDIRECT:
+                if(is_item_special_token_or_empty(previous_item)) {
+                    return KGBASH_RET_MISLOCATED_INPUT_REDIRECT;
+                }
+                job->redirect_in = true;
+                break;
 
-            // If reached null terminator, stop
-            if(string[str_idx] == '\0') {
-                // if(job->file[0] == '\0') {
-                //     if(job->redirect_out) {
-                //         return KGBASH_RET_MISLOCATED_OUTPUT_REDIRECT;
-                //     } else if (job->redirect_in) {
-                //         return KGBASH_RET_MISLOCATED_INPUT_REDIRECT;
-                //     }
-                // }
-                assign_command(job, cmd, cmd_idx, arg_idx+1);
-                return KGBASH_RET_SUCCESS;
-            }
+            case KGBASH_ITEM_TYPE_OUTPUT_REDIRECT:
+                if(is_item_special_token_or_empty(previous_item)) {
+                    return KGBASH_RET_MISLOCATED_OUTPUT_REDIRECT;
+                }
+                job->redirect_out = true;
+                break;
+
+            case KGBASH_ITEM_TYPE_PIPE:
+                if(is_item_special_token_or_empty(previous_item)) {
+                    return KGBASH_RET_MISLOCATED_PIPE;
+                }
+                job->pipes++;
+                break;
+
+            case KGBASH_ITEM_TYPE_SLEEP:
+                if(is_item_special_token_or_empty(previous_item)) {
+                    return KGBASH_RET_MISLOCATED_SLEEP;
+                }
+                job->sleep = true;
+                break;
+
+            default:
+                return KGBASH_RET_FAIL;
         }
-        // User gave too many arguments, overwrite the last one with NULL
-        assign_command(job, cmd, cmd_idx, arg_idx);
+        previous_item = item_type;
+        item_type = input_grab_next_item(string, &str_idx, item, &item_idx);
 
-        // Rare case of end of arg array on last command
-        if(!piped) {
-            return KGBASH_RET_SUCCESS;
+        // Sleep cannot be followed by anything
+        if(item_type != KGBASH_ITEM_TYPE_EMPTY &&
+           previous_item == KGBASH_ITEM_TYPE_SLEEP) {
+            return KGBASH_RET_MISLOCATED_SLEEP;
         }
-
-        // Move to the next command
-        cmd_idx++;
     }
+
+    // The last item cannot be a redirect token or pipe
+    switch(previous_item) {
+        case KGBASH_ITEM_TYPE_INPUT_REDIRECT:
+            return KGBASH_RET_MISLOCATED_INPUT_REDIRECT;
+        case KGBASH_ITEM_TYPE_OUTPUT_REDIRECT:
+            return KGBASH_RET_MISLOCATED_OUTPUT_REDIRECT;
+        case KGBASH_ITEM_TYPE_PIPE:
+            return KGBASH_RET_MISLOCATED_PIPE;
+        default:
+            break;
+    }
+
+    assign_command(job, cmd, cmd_idx, arg_idx+1);
+    return KGBASH_RET_SUCCESS;
 }
 
 static kgbash_result_e
