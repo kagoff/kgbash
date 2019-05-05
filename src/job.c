@@ -308,27 +308,44 @@ job_run_pipes(job_s* job) {
     // Collect all the commands
     for(uint16_t pipes = (job->pipes + 1); pipes > 0; pipes--) {
         uint16_t cmd_idx = pipes - 1;
-        fprintf(stderr, "Collecting cmd=%d, pid=%d\n", cmd_idx, job->cmds[cmd_idx]->pid);
         waitpid(job->cmds[cmd_idx]->pid, &job->cmds[cmd_idx]->retval, 0);
-        fprintf(stderr, "Collected  cmd=%d, pid=%d\n", cmd_idx, job->cmds[cmd_idx]->pid);
     }
 
     redirect_reset_file_descriptors(std_in, std_out);
     return KGBASH_RET_SUCCESS;
 }
 
-kgbash_result_e
-job_run(job_s *job) {
+static bool
+job_run_special_commands(job_s* job) {
+    if(!job || !job->cmds[0] || !(job->cmds[0]->args)[0]) {
+        return false;
+    }
+    const char* cmd = (job->cmds[0]->args)[0];
+    char cur_dir[PATH_MAX];
+
+    if(!strncmp(cmd, PWD_STRING, sizeof(PWD_STRING))) {
+        if(getwd(cur_dir)) {
+            fprintf(stdout, "%s\n", cur_dir);
+            return true;
+        }
+        return false;
+    }
+    if(!strncmp(cmd, CD_STRING, sizeof(CD_STRING))) {
+        if(!chdir(job->file)) {
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+static kgbash_result_e
+job_run_basic(job_s *job) {
     pid_t pid;
     int stdin_fd = -1;
     int stdout_fd = -1;
     kgbash_result_e ret;
 
-    if(job->pipes > 0) {
-        return job_run_pipes(job);
-    }
-
-    //TODO: check return values
     if(job->redirect_out) {
         ret = redirect_file_out(job->file, &stdout_fd);
         if(ret != KGBASH_RET_SUCCESS) {
@@ -341,7 +358,7 @@ job_run(job_s *job) {
         }
     }
 
-    if(job_run_internal(job)) {
+    if(job_run_special_commands(job)) {
         job->cmds[0]->retval = EXIT_SUCCESS;
         redirect_reset_file_descriptors(stdin_fd, stdout_fd);
         return KGBASH_RET_SUCCESS;
@@ -353,12 +370,7 @@ job_run(job_s *job) {
         exit(EXIT_FAILURE);
     }
     else if (pid > 0) {
-        if(!job->sleep) {
-            waitpid(pid, &job->cmds[0]->retval, 0);
-        } else {
-            // TODO: enqueue this pid to check later
-            return KGBASH_RET_SUCCESS;
-        }
+        waitpid(pid, &job->cmds[0]->retval, 0);
     }
     else {
         exit(EXIT_FAILURE);
@@ -368,21 +380,26 @@ job_run(job_s *job) {
     return KGBASH_RET_SUCCESS;
 }
 
-bool job_run_internal(job_s* job) {
-    if(!job || !job->cmds[0] || !(job->cmds[0]->args)[0]) {
-        return false;
-    }
-    const char* cmd = (job->cmds[0]->args)[0];
-    char cur_dir[PATH_MAX];
+kgbash_result_e
+job_run(job_s *job) {
+    pid_t pid;
+    kgbash_result_e ret;
 
-    if(!strncmp(cmd, PWD_STRING, sizeof(PWD_STRING))) {
-        // TODO: this could be piped
-        fprintf(stdout, "%s\n", getcwd(cur_dir, PATH_MAX));
-        return true;
+    // For sleepable jobs, make a child to execute the command and let parent
+    // return success
+    if(job->sleep) {
+        pid = fork();
+        if(pid > 0) {
+            job->pid = pid;
+            return KGBASH_RET_SUCCESS;
+        } else if(pid < 0) {
+            exit(EXIT_FAILURE);
+        }
     }
-    if(!strncmp(cmd, CD_STRING, sizeof(CD_STRING))) {
-        chdir((job->cmds[0]->args)[1]);
-        return true;
+
+    // Run the commands either piped or standard
+    if(job->pipes > 0) {
+        return job_run_pipes(job);
     }
-    return false;
+    return job_run_basic(job);
 }

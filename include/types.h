@@ -42,6 +42,7 @@ typedef struct job {
     bool redirect_out;
     bool redirect_in;
     bool sleep;
+    pid_t pid;
 } job_s;
 
 #endif //TYPES_H

@@ -7,13 +7,14 @@
 
 #include "definitions.h"
 #include "types.h"
+#include "queue.h"
 #include "input.h"
 #include "output.h"
 #include "job.h"
 
 #include "kgbash.h"
 
-static bool active_jobs = false;
+static queue_t jobs = NULL;
 // TODO: have job queue here
 
 int main() {
@@ -21,6 +22,9 @@ int main() {
     char input[INPUT_ARRAY_LEN];
     job_s *job;
     kgbash_result_e ret;
+
+    // Create the running job queue
+    jobs = queue_create();
 
     do {
         // Reset user input
@@ -45,7 +49,7 @@ int main() {
 
         // Check for exit condition
         if(job_is_exit_string(job)) {
-            if(!active_jobs) {
+            if(!queue_count(jobs)) {
                 fprintf(stderr, "Bye...\n");
                 job_free(&job);
                 return EXIT_SUCCESS;
@@ -59,21 +63,33 @@ int main() {
         // Execute the job
         ret = job_run(job);
 
-        // Don't free memory if the job was slept
-        if(job->sleep && ret == KGBASH_RET_SUCCESS) {
-            active_jobs = true;
-            continue;
-        }
-
-        // Output result and free the job to start over
+        // Output result of current job
         output_completion_ret(job, ret);
-        job_free(&job);
 
-        // TODO: check here for completed jobs
-        // do {
-            // job = job_check_completed();
-            // output_completion_ret(job, ret);
-        // } while(job);
+        // Free the job if not in the running queue
+        if(!job->sleep || (job->sleep && ret != KGBASH_RET_SUCCESS)) {
+            job_free(&job);
+        // Otherwise, enqueue the job if it was slept
+        } else if(job->sleep) {
+            queue_enqueue(jobs, (void*)job);
+        }
+        
+        job_s* running_job;
+        int running_job_retval;
+        int total_jobs = queue_count(jobs);
+        for(int num_jobs = 0; num_jobs < total_jobs; num_jobs++) {
+            queue_dequeue(jobs, (void**)&running_job);
+
+            // Check if the current job is done, and if so, free and output
+            if(waitpid(running_job->pid, &running_job_retval, WNOHANG)) {
+                output_completion_ret(job, ret);
+                job_free(&job);
+            } 
+            // Throw the job back in the queue if not ready yet
+            else {
+                queue_enqueue(jobs, (void*)running_job);
+            }
+        }
 
     } while(1);
 

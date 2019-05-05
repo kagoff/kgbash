@@ -42,6 +42,7 @@ static inline bool is_special_token(char token) {
         case '|':
         case '<':
         case '>':
+        case '&':
             return true;
         default:
             return false;

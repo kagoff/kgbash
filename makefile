@@ -14,8 +14,9 @@ CFLAGS=-I$(IDIR) $(LIBS) -g
 
 # Dependencies and Objects lists
 _DEPS = kgbash.h types.h input.h definitions.h job.h cmd.h output.h redirect.h
+_DEPS += queue.h
 DEPS  = $(patsubst %,$(IDIR)/%,$(_DEPS))
-_OBJ = kgbash.o input.o job.o cmd.o output.o redirect.o
+_OBJ = kgbash.o input.o job.o cmd.o output.o redirect.o queue.o
 OBJ  = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 # Compile all C objects

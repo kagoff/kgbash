@@ -9,7 +9,7 @@
  *  - False if input is empty
  *  - True otherwise
  */
- bool input_parse_input(char * string, size_t string_size);
+bool input_parse_input(char * string, size_t string_size);
 
 kgbash_item_type_e input_grab_next_item(const char* string, uint16_t *str_idx,
                                         char* item, uint16_t *item_idx);

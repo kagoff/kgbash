@@ -16,7 +16,7 @@ output_completion(job_s* job) {
     }
 
     fprintf(stderr, "+ completed '%s' ", job->raw_input);
-    for(uint8_t cmd_idx; cmd_idx < job->num_cmds; cmd_idx++) {
+    for(uint16_t cmd_idx= 0; cmd_idx < job->num_cmds; cmd_idx++) {
         fprintf(stderr, "[%d]", WEXITSTATUS(job->cmds[cmd_idx]->retval));
     }
 
@@ -37,6 +37,9 @@ output_completion_ret(job_s *job, kgbash_result_e ret) {
             break;
         case KGBASH_RET_MISLOCATED_PIPE:
             fprintf(stderr, "Error: mislocated pipe\n");
+            break;
+        case KGBASH_RET_MISLOCATED_SLEEP:
+            fprintf(stderr, "Error: mislocated sleep\n");
             break;
         default:
             break;
