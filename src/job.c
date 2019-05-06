@@ -399,7 +399,14 @@ job_run(job_s *job) {
 
     // Run the commands either piped or standard
     if(job->pipes > 0) {
-        return job_run_pipes(job);
+        ret = job_run_pipes(job);
+    } else {
+        ret = job_run_basic(job);
     }
-    return job_run_basic(job);
+
+    if(job->sleep) {
+        exit(ret);
+    } else {
+        return ret;
+    }
 }
