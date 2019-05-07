@@ -1,4 +1,4 @@
-#KGBASH
+# KGBASH
 A simple command line shell that is similar but objectively worse than any real
 shell found on an operating system.
 
