@@ -305,10 +305,12 @@ job_run_pipes(job_s* job) {
             exit(EXIT_FAILURE);
         }
     }
-    // Collect all the commands
-    for(uint16_t pipes = (job->pipes + 1); pipes > 0; pipes--) {
-        uint16_t cmd_idx = pipes - 1;
-        waitpid(job->cmds[cmd_idx]->pid, &job->cmds[cmd_idx]->retval, 0);
+    // Collect all the commands now if we aren't sleeping
+    if(!job->sleep) {
+        for(uint16_t pipes = (job->pipes + 1); pipes > 0; pipes--) {
+            uint16_t cmd_idx = pipes - 1;
+            waitpid(job->cmds[cmd_idx]->pid, &job->cmds[cmd_idx]->retval, 0);
+        }
     }
 
     redirect_reset_file_descriptors(std_in, std_out);
@@ -382,7 +384,10 @@ job_run_basic(job_s *job) {
         exit(EXIT_FAILURE);
     }
     else if (pid > 0) {
-        waitpid(pid, &job->cmds[0]->retval, 0);
+        job->cmds[0]->pid = pid;
+        if(!job->sleep) {
+            waitpid(pid, &job->cmds[0]->retval, 0);
+        }
     }
     else {
         exit(EXIT_FAILURE);
@@ -398,17 +403,6 @@ job_run(job_s *job) {
     pid_t pid;
     kgbash_result_e ret;
 
-    // For sleepable jobs, make child and save pid to job to find later
-    if(job->sleep) {
-        pid = fork();
-        if(pid > 0) {
-            job->pid = pid;
-            return KGBASH_RET_SUCCESS;
-        } else if(pid < 0) {
-            exit(EXIT_FAILURE);
-        }
-    }
-
     // Run the commands either piped or standard
     // TODO: combine this
     if(job->pipes > 0) {
@@ -417,11 +411,5 @@ job_run(job_s *job) {
         ret = job_run_basic(job);
     }
 
-    // This is the child process at this point for a sleepable job
-    if(job->sleep) {
-        exit(ret);
-    // For regular job, still the parent, so return the value normally
-    } else {
-        return ret;
-    }
+    return ret;
 }

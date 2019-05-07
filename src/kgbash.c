@@ -24,15 +24,24 @@ check_running_jobs(void) {
     for(int num_jobs = 0; num_jobs < total_jobs; num_jobs++) {
         queue_dequeue(jobs, (void**)&running_job);
 
-        // Check if the current job is done, and if so, free and output
-        if(waitpid(running_job->pid, &running_job_retval, WNOHANG)) {
-            output_completion_ret(running_job, WEXITSTATUS(running_job_retval));
+        // See if every command is complete in the job
+        bool still_running = false;
+        for(uint16_t pipes = (running_job->pipes + 1); pipes > 0; pipes--) {
+            uint16_t cmd_idx = pipes - 1;
+            if(!waitpid(running_job->cmds[cmd_idx]->pid,
+                        &running_job->cmds[cmd_idx]->retval,
+                        WNOHANG)) {
+                still_running = true;
+            }
+        }
+        // Output and free job if done, else throw back in the queue to check later
+        if(!still_running) {
+            output_completion_ret(running_job, KGBASH_RET_SUCCESS);
             job_free(&running_job);
-        } 
-        // Throw the job back in the queue if not ready yet
-        else {
+        } else {
             queue_enqueue(jobs, (void*)running_job);
         }
+        
     }
 }
 
