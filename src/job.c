@@ -315,10 +315,10 @@ job_run_pipes(job_s* job) {
     return KGBASH_RET_SUCCESS;
 }
 
-static bool
+static kgbash_result_e
 job_run_special_commands(job_s* job) {
     if(!job || !job->cmds[0] || !(job->cmds[0]->args)[0]) {
-        return false;
+        return KGBASH_RET_NULL_PARAM;
     }
     const char* cmd = (job->cmds[0]->args)[0];
     char cur_dir[PATH_MAX];
@@ -326,17 +326,20 @@ job_run_special_commands(job_s* job) {
     if(!strncmp(cmd, PWD_STRING, sizeof(PWD_STRING))) {
         if(getwd(cur_dir)) {
             fprintf(stdout, "%s\n", cur_dir);
-            return true;
+            return KGBASH_RET_SUCCESS;
         }
-        return false;
+        return KGBASH_RET_FAIL;
     }
     if(!strncmp(cmd, CD_STRING, sizeof(CD_STRING))) {
-        if(!chdir(job->file)) {
-            return true;
+        if(!(job->cmds[0]->args)[1]) {
+            return KGBASH_RET_NULL_PARAM;
         }
-        return false;
+        if(!chdir((job->cmds[0]->args)[1])) {
+            return KGBASH_RET_SUCCESS;
+        }
+        return KGBASH_RET_SUCCESS;
     }
-    return false;
+    return KGBASH_RET_NO_OP;
 }
 
 static kgbash_result_e
@@ -346,24 +349,33 @@ job_run_basic(job_s *job) {
     int stdout_fd = -1;
     kgbash_result_e ret;
 
+    // Redirect I/O if needed
     if(job->redirect_out) {
         ret = redirect_file_out(job->file, &stdout_fd);
         if(ret != KGBASH_RET_SUCCESS) {
             return ret;
         }
-    } else if(job->redirect_in) {
+    }
+    if(job->redirect_in) {
         ret = redirect_file_in(job->file, &stdin_fd);
         if(ret != KGBASH_RET_SUCCESS) {
             return ret;
         }
     }
 
-    if(job_run_special_commands(job)) {
+    // Run commands that are defined internally to the shell
+    ret = job_run_special_commands(job);
+    if(ret == KGBASH_RET_SUCCESS) {
         job->cmds[0]->retval = EXIT_SUCCESS;
         redirect_reset_file_descriptors(stdin_fd, stdout_fd);
         return KGBASH_RET_SUCCESS;
+    } else if(ret != KGBASH_RET_NO_OP) {
+        job->cmds[0]->retval = EXIT_FAILURE;
+        redirect_reset_file_descriptors(stdin_fd, stdout_fd);
+        return KGBASH_RET_FAIL;
     }
 
+    // Fork and wait for the child to execute to completion
     pid = fork();
     if (pid == 0) {
         execvp(job->cmds[0]->args[0], job->cmds[0]->args);
@@ -376,6 +388,7 @@ job_run_basic(job_s *job) {
         exit(EXIT_FAILURE);
     }
 
+    // Reset file descriptors for parent before continuing
     redirect_reset_file_descriptors(stdin_fd, stdout_fd);
     return KGBASH_RET_SUCCESS;
 }
@@ -385,8 +398,7 @@ job_run(job_s *job) {
     pid_t pid;
     kgbash_result_e ret;
 
-    // For sleepable jobs, make a child to execute the command and let parent
-    // return success
+    // For sleepable jobs, make child and save pid to job to find later
     if(job->sleep) {
         pid = fork();
         if(pid > 0) {
@@ -398,14 +410,17 @@ job_run(job_s *job) {
     }
 
     // Run the commands either piped or standard
+    // TODO: combine this
     if(job->pipes > 0) {
         ret = job_run_pipes(job);
     } else {
         ret = job_run_basic(job);
     }
 
+    // This is the child process at this point for a sleepable job
     if(job->sleep) {
         exit(ret);
+    // For regular job, still the parent, so return the value normally
     } else {
         return ret;
     }

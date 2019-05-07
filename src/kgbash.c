@@ -64,6 +64,7 @@ int main() {
         if(ret != KGBASH_RET_SUCCESS) {
             output_completion_ret(job, ret);
             job_free(&job);
+            check_running_jobs();
             continue;
         }
 
@@ -76,6 +77,7 @@ int main() {
             } else {
                 fprintf(stderr, "Error: active jobs still running\n");
                 job_free(&job);
+                check_running_jobs();
                 continue;
             }
         }
